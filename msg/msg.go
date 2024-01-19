@@ -10,6 +10,8 @@ const (
 	MsgSkillResp uint8  = 106
 	MsgMove      uint8  = 107
 	MsgMoveResp  uint8  = 108
+	MsgBlood     uint8  = 109
+	MsgBloodResp uint8  = 110
 )
 
 const (
@@ -38,6 +40,7 @@ type LoginMsg struct {
 
 type LoginMsgResp struct {
 	BaseResp
+	IsA bool `json:"is_a"`
 }
 
 type MoveReq struct {
@@ -49,4 +52,17 @@ type MoveReq struct {
 
 type MoveResp struct {
 	BaseResp
+}
+
+type SkillReq struct {
+	Id        string  `json:"id"`
+	X         float64 `json:"x"`
+	Y         float64 `json:"y"`
+	Type      int     `json:"type"`      // 1 篮球 2 鸡
+	Direction int     `json:"direction"` // 1 左 2右
+}
+
+type MsgBloodReq struct {
+	Id    string  `json:"id"`
+	Blood float32 `json:"blood"`
 }

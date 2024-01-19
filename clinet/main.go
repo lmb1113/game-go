@@ -27,11 +27,18 @@ type ModelInfo struct {
 	Blood    float32 `json:"blood"`
 }
 
-var LocalUserInfo ModelInfo
-var RemoteUserInfo ModelInfo
+type GameRoom struct {
+	RoomId uint64     `json:"room_id"`
+	UserA  *ModelInfo `json:"user_a"`
+	UserB  *ModelInfo `json:"user_b"`
+}
+
+var GameRoomInfo GameRoom
+
+var LoginResp msg.LoginMsgResp
 
 func Init() {
-	serverAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:9090")
+	serverAddr, err := net.ResolveTCPAddr("tcp", "192.168.31.245:9090")
 	if err != nil {
 		fmt.Println("解析服务器地址失败：", err)
 		return
@@ -79,7 +86,9 @@ func handleConnection(conn net.Conn) {
 		fmt.Printf("%+v", scannedPack)
 		switch scannedPack.MsgType {
 		case msg.MsgMoveResp:
-			json.Unmarshal(scannedPack.Msg, &RemoteUserInfo)
+			json.Unmarshal(scannedPack.Msg, &GameRoomInfo)
+		case msg.MsgLoginResp:
+			json.Unmarshal(scannedPack.Msg, &LoginResp)
 		}
 	}
 }

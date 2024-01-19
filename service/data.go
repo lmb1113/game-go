@@ -39,23 +39,41 @@ func (g *GameRoom) HandleMove(req *msg.MoveReq) {
 	if g.UserA != nil && g.UserA.UserId == req.Id {
 		g.UserA.X = req.X
 		g.UserA.Y = req.Y
-		g.UserA.Blood = req.Blood
 	}
 	if g.UserB != nil && g.UserB.UserId == req.Id {
 		g.UserB.X = req.X
 		g.UserB.Y = req.Y
-		g.UserB.Blood = req.Blood
 	}
+	data, _ := json.Marshal(g)
 	if g.UserA != nil {
-		dataB, _ := json.Marshal(g.UserB)
 		if conn, has := getConn(g.UserA.UserId); has {
-			pack.Send(conn, msg.MsgMoveResp, g.UserA.UserId, dataB)
+			pack.Send(conn, msg.MsgMoveResp, g.UserA.UserId, data)
 		}
 	}
 	if g.UserB != nil {
-		dataA, _ := json.Marshal(g.UserA)
 		if conn, has := getConn(g.UserB.UserId); has {
-			pack.Send(conn, msg.MsgMoveResp, g.UserB.UserId, dataA)
+			pack.Send(conn, msg.MsgMoveResp, g.UserB.UserId, data)
+		}
+	}
+}
+
+func (g *GameRoom) HandleBlood(req *msg.MsgBloodReq) {
+	if g.UserA != nil && g.UserB != nil {
+		if g.UserA.UserId == req.Id {
+			g.UserB.Blood = req.Blood
+		} else {
+			g.UserA.Blood = req.Blood
+		}
+	}
+	data, _ := json.Marshal(g)
+	if g.UserA != nil {
+		if conn, has := getConn(g.UserA.UserId); has {
+			pack.Send(conn, msg.MsgMoveResp, g.UserA.UserId, data)
+		}
+	}
+	if g.UserB != nil {
+		if conn, has := getConn(g.UserB.UserId); has {
+			pack.Send(conn, msg.MsgMoveResp, g.UserB.UserId, data)
 		}
 	}
 }

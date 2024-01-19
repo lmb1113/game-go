@@ -44,23 +44,23 @@ func handleConnection(conn net.Conn) {
 						Blood:    100,
 					},
 				})
-				continue
+			} else {
+				room.UserB = &ModelInfo{
+					UserId:   string(scannedPack.Hostname),
+					UserName: string(scannedPack.Hostname),
+					Blood:    100,
+				}
+				SetGameRoom(12345, room)
 			}
-			room.UserB = &ModelInfo{
-				UserId:   string(scannedPack.Hostname),
-				UserName: string(scannedPack.Hostname),
-				Blood:    100,
-			}
-			SetGameRoom(12345, room)
 			resp := &msg.LoginMsgResp{
 				BaseResp: msg.BaseResp{
 					Code: msg.CodeOk,
 				},
+				IsA: !has,
 			}
 			respData, _ := json.Marshal(resp)
 			pack.Send(conn, msg.MsgLoginResp, "server", respData)
 		case msg.MsgMove:
-			fmt.Println(111113131)
 			room, has := GetGameRoom(12345)
 			if !has {
 				continue
@@ -76,6 +76,15 @@ func handleConnection(conn net.Conn) {
 			}
 			respData, _ := json.Marshal(resp)
 			pack.Send(conn, msg.MsgMoveResp, "server", respData)
+		case msg.MsgBlood:
+			room, has := GetGameRoom(12345)
+			if !has {
+				continue
+			}
+			fmt.Println("移动成功")
+			var msgData msg.MsgBloodReq
+			json.Unmarshal(scannedPack.Msg, &msgData)
+			room.HandleBlood(&msgData)
 		}
 	}
 }

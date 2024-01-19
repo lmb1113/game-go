@@ -111,7 +111,22 @@ type Game struct {
 	keys   []ebiten.Key
 	Cxk    *ModelInfo
 	Atm    *ModelInfo
+	IsA    bool
 	Status int // 1 待开始 2 战斗中 3 战斗结束 4 暂停]
+}
+
+func (g *Game) GetMeObj() *ModelInfo {
+	if g.IsA {
+		return g.Cxk
+	}
+	return g.Atm
+}
+
+func (g *Game) GetRivalObj() *ModelInfo {
+	if !g.IsA {
+		return g.Cxk
+	}
+	return g.Atm
 }
 
 type ModelInfo struct {
@@ -160,45 +175,55 @@ func (g *Game) HandleCtrl(keys []ebiten.Key) {
 			go g.Cxk.Do(func() {
 				g.handleSkill(key)
 			})
-			go g.Atm.Do(func() {
-				g.handleSkill(key)
-			})
 		}
 	}
 }
 
 func (g *Game) HandleRemoteCtrl() {
-	if clinet.RemoteUserInfo.UserId != "" {
-		g.Atm.X = clinet.RemoteUserInfo.X
-		g.Atm.Y = clinet.RemoteUserInfo.Y
-		g.Atm.blood = clinet.RemoteUserInfo.Blood
+	if clinet.GameRoomInfo.RoomId != 0 {
+		if g.IsA {
+			g.GetMeObj().X = clinet.GameRoomInfo.UserA.X
+			g.GetRivalObj().X = clinet.GameRoomInfo.UserB.X
+			g.GetMeObj().Y = clinet.GameRoomInfo.UserA.Y
+			g.GetRivalObj().Y = clinet.GameRoomInfo.UserB.Y
+			g.GetMeObj().blood = clinet.GameRoomInfo.UserA.Blood
+			g.GetRivalObj().blood = clinet.GameRoomInfo.UserB.Blood
+		} else {
+			g.GetMeObj().X = clinet.GameRoomInfo.UserB.X
+			g.GetRivalObj().X = clinet.GameRoomInfo.UserA.X
+			g.GetMeObj().Y = clinet.GameRoomInfo.UserB.Y
+			g.GetRivalObj().Y = clinet.GameRoomInfo.UserA.Y
+			g.GetMeObj().blood = clinet.GameRoomInfo.UserB.Blood
+			g.GetRivalObj().blood = clinet.GameRoomInfo.UserA.Blood
+		}
+		g.IsA = clinet.LoginResp.IsA
 	}
 }
 
 func (g *Game) handleKey(key ebiten.Key) {
 	switch key {
 	case ebiten.KeyA:
-		if g.Cxk.X > 0 {
-			g.Cxk.X -= 3
+		if g.GetMeObj().X > 0 {
+			g.GetMeObj().X -= 3
 		}
 	case ebiten.KeyS:
-		if g.Cxk.Y+modelHeight < screenHeight {
-			g.Cxk.Y += 3
+		if g.GetMeObj().Y+modelHeight < screenHeight {
+			g.GetMeObj().Y += 3
 		}
 	case ebiten.KeyD:
-		if g.Cxk.X+modelWidth < screenWidth {
-			g.Cxk.X += 3
+		if g.GetMeObj().X+modelWidth < screenWidth {
+			g.GetMeObj().X += 3
 		}
 	case ebiten.KeyW:
-		if g.Cxk.Y > 0 {
-			g.Cxk.Y -= 3
+		if g.GetMeObj().Y > 0 {
+			g.GetMeObj().Y -= 3
 		}
 	}
 	msgData, _ := json.Marshal(msg.MoveReq{
 		Id:    clinet.Uid,
-		X:     g.Cxk.X,
-		Y:     g.Cxk.Y,
-		Blood: g.Cxk.blood,
+		X:     g.GetMeObj().X,
+		Y:     g.GetMeObj().Y,
+		Blood: g.GetMeObj().blood,
 	})
 	pack.Send(clinet.GetConn(), msg.MsgMove, clinet.Uid, msgData)
 }
@@ -206,13 +231,27 @@ func (g *Game) handleKey(key ebiten.Key) {
 func (g *Game) handleSkill(key ebiten.Key) {
 	switch key {
 	case ebiten.KeyJ:
-		g.Cxk.Skill = append(g.Cxk.Skill, &SkillA{
+		msgData, _ := json.Marshal(msg.SkillReq{
+			Id:   clinet.Uid,
+			X:    g.GetMeObj().X,
+			Y:    g.GetMeObj().Y,
+			Type: 1,
+		})
+		pack.Send(clinet.GetConn(), msg.MsgSkill, clinet.Uid, msgData)
+		g.GetMeObj().Skill = append(g.GetMeObj().Skill, &SkillA{
 			SkillBase{
 				Type: 1,
 			},
 		})
 	case ebiten.KeyK:
-		g.Cxk.Skill = append(g.Cxk.Skill, &SkillA{
+		msgData, _ := json.Marshal(msg.SkillReq{
+			Id:   clinet.Uid,
+			X:    g.GetMeObj().X,
+			Y:    g.GetMeObj().Y,
+			Type: 2,
+		})
+		pack.Send(clinet.GetConn(), msg.MsgSkill, clinet.Uid, msgData)
+		g.GetMeObj().Skill = append(g.GetMeObj().Skill, &SkillA{
 			SkillBase{
 				Type: 2,
 			},
@@ -259,8 +298,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	screen.DrawImage(atmImage, op1)
 	g.DrawBlood(screen)
 	{
-		for _, skill := range g.Cxk.Skill {
-			skill.Handle(screen, g.Cxk.X, g.Cxk.Y, g.Atm)
+		for index, skill := range g.GetMeObj().Skill {
+			if skill.Handle(screen, g.GetMeObj().X, g.GetMeObj().Y, g.GetRivalObj()) {
+				g.GetMeObj().Skill = append(g.GetMeObj().Skill[:index], g.GetMeObj().Skill[index+1:]...)
+			}
 		}
 	}
 	ebitenutil.DebugPrint(screen, fmt.Sprintf("TPS: %0.2f", ebiten.ActualTPS()))
@@ -379,7 +420,7 @@ func NewGame() *Game {
 }
 
 type Skill interface {
-	Handle(screen *ebiten.Image, x float64, y float64, obj *ModelInfo)
+	Handle(screen *ebiten.Image, x float64, y float64, obj *ModelInfo) bool
 }
 
 type SkillBase struct {
@@ -399,17 +440,30 @@ type SkillA struct {
 	SkillBase
 }
 
-func (s *SkillA) Handle(screen *ebiten.Image, x float64, y float64, obj *ModelInfo) {
+func (s *SkillA) Handle(screen *ebiten.Image, x float64, y float64, obj *ModelInfo) bool {
 	s.once.Do(func() {
 		s.X = x
 		s.Y = y
 	})
+	if s.X <= -40 || s.X > screenWidth+40 {
+		return true
+	}
+
+	if s.Y <= -40 || s.Y > screenHeight+40 {
+		return true
+	}
 	op1 := &ebiten.DrawImageOptions{}
 	op1.GeoM.Scale(0.1, 0.1)
 	op1.GeoM.Translate(s.X, s.Y)
 	s.X += 5
-	if s.X-obj.X == 0 && math.Abs(s.Y-obj.Y) <= 50 {
+	fmt.Printf(" 人物坐标 [%f,%f] 技能坐标 [%f,%f] \n", obj.X, obj.Y, s.X, s.Y)
+	if s.Y-obj.Y == 0 && math.Abs(s.X-obj.X) <= 50 {
 		obj.blood--
+		msgData, _ := json.Marshal(msg.MsgBloodReq{
+			Id:    clinet.Uid,
+			Blood: obj.blood,
+		})
+		pack.Send(clinet.GetConn(), msg.MsgBlood, clinet.Uid, msgData)
 	}
 	switch s.Type {
 	case 1:
@@ -417,4 +471,5 @@ func (s *SkillA) Handle(screen *ebiten.Image, x float64, y float64, obj *ModelIn
 	case 2:
 		screen.DrawImage(chickenImage, op1)
 	}
+	return false
 }
