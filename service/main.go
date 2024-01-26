@@ -93,6 +93,14 @@ func handleConnection(conn net.Conn) {
 			respData, _ := json.Marshal(resp)
 			pack.Send(conn, msg.MsgJoinRoomResp, respData)
 			new(RoomService).InitPlayData(msgData.RoomId)
+		case msg.MsgSkill:
+			fmt.Println("使用技能", scannedPack.Msg)
+			var msgData msg.SkillReq
+			json.Unmarshal(scannedPack.Msg, &msgData)
+			err := new(RoomService).HandleSkill(msgData)
+			if err != nil {
+				fmt.Println(err)
+			}
 		}
 	}
 }

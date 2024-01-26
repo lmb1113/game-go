@@ -41,6 +41,7 @@ var RoomResp msg.GetRoomResp
 var BloodResp msg.BloodResp
 var createRoomResp msg.CreateRoomResp
 var RoomChannel chan msg.CreateRoomResp
+var SkillChannel chan []byte
 
 func Init() {
 	serverAddr, err := net.ResolveTCPAddr("tcp", "192.168.31.245:9090")
@@ -62,6 +63,7 @@ func Init() {
 	go handleConnection(conn)
 	fmt.Println("已连接到服务器")
 	RoomChannel = make(chan msg.CreateRoomResp, 100)
+	SkillChannel = make(chan []byte, 100)
 	select {}
 }
 
@@ -108,6 +110,8 @@ func handleConnection(conn net.Conn) {
 			json.Unmarshal(scannedPack.Msg, &createRoomResp)
 			createRoomResp.IsA = true
 			RoomChannel <- createRoomResp
+		case msg.MsgSkillResp:
+			SkillChannel <- scannedPack.Msg
 		}
 	}
 }

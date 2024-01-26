@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"game/global"
 	"game/msg"
+	"game/pack"
 	"game/utils/pkg/flake"
 	"sync"
 )
@@ -72,6 +74,25 @@ func (r *RoomService) Join(id string, roomId uint64) error {
 		Blood:  100,
 		X:      global.ScreenWidth / 4 * 3,
 		Y:      global.ScreenHeight / 2,
+	}
+	return nil
+}
+
+func (r *RoomService) HandleSkill(req msg.SkillReq) error {
+	room, ok := r.GetGameRoom(req.RoomId)
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	respData, _ := json.Marshal(req)
+	if room.UserA.UserId == req.UserId {
+		if conn, has := getConn(room.UserB.UserId); has {
+			pack.Send(conn, msg.MsgSkillResp, respData)
+		}
+	} else {
+		if conn, has := getConn(room.UserB.UserId); has {
+			pack.Send(conn, msg.MsgSkillResp, respData)
+		}
 	}
 	return nil
 }

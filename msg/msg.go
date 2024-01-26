@@ -62,11 +62,13 @@ type MoveResp struct {
 }
 
 type SkillReq struct {
-	Id        string  `json:"id"`
+	UserId    string  `json:"user_id"`
+	RoomId    uint64  `json:"room_id"`
 	X         float64 `json:"x"`
 	Y         float64 `json:"y"`
 	Type      int     `json:"type"`      // 1 篮球 2 鸡
 	Direction int     `json:"direction"` // 1 左 2右
+	Releasing bool    `json:"releasing"`
 }
 
 type BloodReq struct {

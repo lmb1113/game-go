@@ -174,6 +174,18 @@ func (g *Game) RoomJoin() {
 	}
 }
 
+func (g *Game) RemoteSkill() {
+	for data := range clinet.SkillChannel {
+		var skill SkillA
+		json.Unmarshal(data, &skill)
+		if g.IsA {
+			g.UserB.Skill = append(g.UserB.Skill, &skill)
+		} else {
+			g.UserA.Skill = append(g.UserA.Skill, &skill)
+		}
+	}
+}
+
 func (g *Game) HandleCtrl(keys []ebiten.Key) {
 	for _, key := range keys {
 		switch key {
@@ -244,26 +256,12 @@ func (g *Game) handleKey(key ebiten.Key) {
 func (g *Game) handleSkill(key ebiten.Key) {
 	switch key {
 	case ebiten.KeyJ:
-		msgData, _ := json.Marshal(msg.SkillReq{
-			Id:   clinet.Uid,
-			X:    g.GetMeObj().X,
-			Y:    g.GetMeObj().Y,
-			Type: 1,
-		})
-		pack.Send(clinet.GetConn(), msg.MsgSkill, msgData)
 		g.GetMeObj().Skill = append(g.GetMeObj().Skill, &SkillA{
 			SkillBase{
 				Type: 1,
 			},
 		})
 	case ebiten.KeyK:
-		msgData, _ := json.Marshal(msg.SkillReq{
-			Id:   clinet.Uid,
-			X:    g.GetMeObj().X,
-			Y:    g.GetMeObj().Y,
-			Type: 2,
-		})
-		pack.Send(clinet.GetConn(), msg.MsgSkill, msgData)
 		g.GetMeObj().Skill = append(g.GetMeObj().Skill, &SkillA{
 			SkillBase{
 				Type: 2,
@@ -317,6 +315,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			for index, skill := range g.GetMeObj().Skill {
 				if skill.Handle(screen, g.GetMeObj().X, g.GetMeObj().Y, g.GetRivalObj(), g.RoomId) {
 					g.GetMeObj().Skill = append(g.GetMeObj().Skill[:index], g.GetMeObj().Skill[index+1:]...)
+				}
+			}
+			for index, skill := range g.GetRivalObj().Skill {
+				if skill.HandleRemote(screen, skill.(*SkillA), g.RoomId) {
+					g.GetRivalObj().Skill = append(g.GetRivalObj().Skill[:index], g.GetRivalObj().Skill[index+1:]...)
 				}
 			}
 		}
@@ -446,11 +449,13 @@ func NewGame() *Game {
 		g.IsA = isA
 	}
 	go g.RoomJoin()
+	go g.RemoteSkill()
 	return g
 }
 
 type Skill interface {
 	Handle(screen *ebiten.Image, x float64, y float64, obj *ModelInfo, roomId uint64) bool
+	HandleRemote(screen *ebiten.Image, skill *SkillA, roomId uint64) bool
 }
 
 type SkillBase struct {
@@ -462,8 +467,7 @@ type SkillBase struct {
 	Direction uint    // 1 左边 2 右边
 	X         float64 // x坐标
 	Y         float64 // y坐标
-	sync.Mutex
-	once sync.Once
+	once      sync.Once
 }
 
 type SkillA struct {
@@ -498,6 +502,47 @@ func (s *SkillA) Handle(screen *ebiten.Image, x float64, y float64, obj *ModelIn
 		pack.Send(clinet.GetConn(), msg.MsgBlood, msgData)
 		return true
 	}
+	switch s.Type {
+	case 1:
+		screen.DrawImage(basketballImage, op1)
+	case 2:
+		screen.DrawImage(chickenImage, op1)
+	}
+	return false
+}
+
+func (s *SkillA) HandleRemote(screen *ebiten.Image, skill *SkillA, roomId uint64) bool {
+	s.Y = skill.Y
+	s.X = skill.X
+	s.Type = skill.Type
+	s.Name = skill.Name
+	s.Damage = skill.Damage
+	s.Releasing = skill.Releasing
+	defer func() {
+		//go func() {
+		msgData, _ := json.Marshal(msg.SkillReq{
+			UserId: clinet.Uid,
+			RoomId: roomId,
+			X:      s.X,
+			Y:      s.Y,
+			Type:   1,
+		})
+		pack.Send(clinet.GetConn(), msg.MsgSkill, msgData)
+		//}()
+	}()
+	if s.X <= -40 || s.X > global.ScreenWidth+40 {
+		s.X = 99999
+		return true
+	}
+
+	if s.Y <= -40 || s.Y > global.ScreenHeight+40 {
+		s.Y = 99999
+		return true
+	}
+	op1 := &ebiten.DrawImageOptions{}
+	op1.GeoM.Scale(0.1, 0.1)
+	op1.GeoM.Translate(s.X, s.Y)
+	s.X += 5
 	switch s.Type {
 	case 1:
 		screen.DrawImage(basketballImage, op1)
