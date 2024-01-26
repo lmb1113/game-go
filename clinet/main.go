@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"game/msg"
 	"game/pack"
+	"game/utils/pkg/flake"
 	"net"
-	"time"
+	"strconv"
 )
 
 var conn net.Conn
@@ -36,6 +37,10 @@ type GameRoom struct {
 var GameRoomInfo GameRoom
 
 var LoginResp msg.LoginMsgResp
+var RoomResp msg.GetRoomResp
+var BloodResp msg.BloodResp
+var createRoomResp msg.CreateRoomResp
+var RoomChannel chan msg.CreateRoomResp
 
 func Init() {
 	serverAddr, err := net.ResolveTCPAddr("tcp", "192.168.31.245:9090")
@@ -51,11 +56,12 @@ func Init() {
 	}
 
 	defer conn.Close()
-	//uuid, _ := uuid.NewUUID()git remote add origin git@github.com:lmb1113/game-go.git
-	Uid = fmt.Sprintf("%d", time.Now().Unix())
-	pack.Send(conn, msg.MsgLogin, Uid, nil)
+	id, _ := flake.GetID()
+	Uid = strconv.FormatUint(id, 10)
+	pack.Send(conn, msg.MsgLogin, nil)
 	go handleConnection(conn)
 	fmt.Println("已连接到服务器")
+	RoomChannel = make(chan msg.CreateRoomResp, 100)
 	select {}
 }
 
@@ -89,6 +95,19 @@ func handleConnection(conn net.Conn) {
 			json.Unmarshal(scannedPack.Msg, &GameRoomInfo)
 		case msg.MsgLoginResp:
 			json.Unmarshal(scannedPack.Msg, &LoginResp)
+		case msg.MsgRoomListResp:
+			json.Unmarshal(scannedPack.Msg, &RoomResp)
+		case msg.MsgBloodResp:
+			json.Unmarshal(scannedPack.Msg, &BloodResp)
+		case msg.MsgJoinRoomResp:
+			json.Unmarshal(scannedPack.Msg, &createRoomResp)
+			createRoomResp.IsA = false
+			RoomChannel <- createRoomResp
+			fmt.Println("加入房间成功")
+		case msg.MsgCreateRoomResp:
+			json.Unmarshal(scannedPack.Msg, &createRoomResp)
+			createRoomResp.IsA = true
+			RoomChannel <- createRoomResp
 		}
 	}
 }

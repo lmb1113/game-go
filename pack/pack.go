@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"time"
 )
 
@@ -45,7 +46,7 @@ func (p *Package) Unpack(reader io.Reader) error {
 	return err
 }
 func (p *Package) String() string {
-	return fmt.Sprintf(" version:%s length:%d msg_type%d timestamp:%d hostname:%s msg:%s",
+	return fmt.Sprintf("\nversion:%s length:%d msg_type%d timestamp:%d hostname:%s msg:%s",
 		p.Version,
 		p.Length,
 		p.MsgType,
@@ -55,18 +56,19 @@ func (p *Package) String() string {
 	)
 }
 
-func Send(conn net.Conn, msgType uint8, name string, data []byte) {
+func Send(conn net.Conn, msgType uint8, data []byte) {
+	hostname, err := os.Hostname()
 	packData := &Package{
 		Version:        [2]byte{'V', '1'},
 		MsgType:        msgType,
 		Timestamp:      time.Now().Unix(),
-		HostnameLength: int16(len(name)),
-		Hostname:       []byte(name),
+		HostnameLength: int16(len(hostname)),
+		Hostname:       []byte(hostname),
 		Msg:            data,
 	}
 	packData.Length = 8 + 2 + 1 + packData.HostnameLength + int16(len(packData.Msg))
 	buf := new(bytes.Buffer)
-	err := packData.Pack(buf)
+	err = packData.Pack(buf)
 	if err != nil {
 		return
 	}

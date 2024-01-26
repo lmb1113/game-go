@@ -2,78 +2,93 @@ package main
 
 import (
 	"encoding/json"
+	"game/global"
 	"game/msg"
 	"game/pack"
-	"sync"
 )
 
-type GameRoom struct {
-	RoomId uint64     `json:"room_id"`
-	UserA  *ModelInfo `json:"user_a"`
-	UserB  *ModelInfo `json:"user_b"`
-}
-
-type ModelInfo struct {
-	UserId   string  `json:"user_id"`
-	UserName string  `json:"user_name"`
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	Blood    float32 `json:"blood"`
-}
-
-var GameRoomMar sync.Map
-
-func GetGameRoom(roomId uint64) (*GameRoom, bool) {
-	room, has := GameRoomMar.Load(roomId)
-	if has {
-		return room.(*GameRoom), true
+func (r *RoomService) HandleMove(req *msg.MoveReq) {
+	room, ok := r.GetGameRoom(req.RoomId)
+	if !ok {
+		return
 	}
-	return nil, false
-}
-
-func SetGameRoom(roomId uint64, room *GameRoom) {
-	GameRoomMar.Store(roomId, room)
-}
-
-func (g *GameRoom) HandleMove(req *msg.MoveReq) {
-	if g.UserA != nil && g.UserA.UserId == req.Id {
-		g.UserA.X = req.X
-		g.UserA.Y = req.Y
+	if room.UserA != nil && room.UserA.UserId == req.Id {
+		room.UserA.X = req.X
+		room.UserA.Y = req.Y
 	}
-	if g.UserB != nil && g.UserB.UserId == req.Id {
-		g.UserB.X = req.X
-		g.UserB.Y = req.Y
+	if room.UserB != nil && room.UserB.UserId == req.Id {
+		room.UserB.X = req.X
+		room.UserB.Y = req.Y
 	}
-	data, _ := json.Marshal(g)
-	if g.UserA != nil {
-		if conn, has := getConn(g.UserA.UserId); has {
-			pack.Send(conn, msg.MsgMoveResp, g.UserA.UserId, data)
+	data, _ := json.Marshal(room)
+	if room.UserA != nil {
+		if conn, has := getConn(room.UserA.UserId); has {
+			pack.Send(conn, msg.MsgMoveResp, data)
 		}
 	}
-	if g.UserB != nil {
-		if conn, has := getConn(g.UserB.UserId); has {
-			pack.Send(conn, msg.MsgMoveResp, g.UserB.UserId, data)
+	if room.UserB != nil {
+		if conn, has := getConn(room.UserB.UserId); has {
+			pack.Send(conn, msg.MsgMoveResp, data)
 		}
 	}
 }
 
-func (g *GameRoom) HandleBlood(req *msg.MsgBloodReq) {
-	if g.UserA != nil && g.UserB != nil {
-		if g.UserA.UserId == req.Id {
-			g.UserB.Blood = req.Blood
+func (r *RoomService) HandleBlood(req *msg.BloodReq) {
+	room, ok := r.GetGameRoom(req.RoomId)
+	if !ok {
+		return
+	}
+	var resp msg.BloodResp
+	resp.Blood = req.Blood
+	respJson, _ := json.Marshal(resp)
+	if room.UserA != nil && room.UserB != nil {
+		if room.UserA.UserId == req.Id {
+			room.UserB.Blood = req.Blood
+			if conn, has := getConn(room.UserB.UserId); has {
+				pack.Send(conn, msg.MsgBloodResp, respJson)
+			}
 		} else {
-			g.UserA.Blood = req.Blood
+			room.UserA.Blood = req.Blood
+			if conn, has := getConn(room.UserA.UserId); has {
+				pack.Send(conn, msg.MsgBloodResp, respJson)
+			}
 		}
 	}
-	data, _ := json.Marshal(g)
-	if g.UserA != nil {
-		if conn, has := getConn(g.UserA.UserId); has {
-			pack.Send(conn, msg.MsgMoveResp, g.UserA.UserId, data)
+}
+
+func (r *RoomService) InitPlayData(roomId uint64) {
+	room, ok := r.GetGameRoom(roomId)
+	if !ok {
+		return
+	}
+	room.UserA = &msg.ModelInfo{
+		UserId:   room.UserA.UserId,
+		UserName: "玩家A",
+		X:        100,
+		Y:        global.ScreenHeight / 2,
+		Blood:    100,
+	}
+	room.UserB = &msg.ModelInfo{
+		UserId:   room.UserB.UserId,
+		UserName: "玩家B",
+		X:        global.ScreenWidth / 4 * 3,
+		Y:        global.ScreenHeight / 2,
+		Blood:    100,
+	}
+	data, _ := json.Marshal(room)
+	var resp msg.BloodResp
+	resp.Blood = 100
+	bloodData, _ := json.Marshal(resp)
+	if room.UserA != nil {
+		if conn, has := getConn(room.UserA.UserId); has {
+			pack.Send(conn, msg.MsgBloodResp, bloodData)
+			pack.Send(conn, msg.MsgMoveResp, data)
 		}
 	}
-	if g.UserB != nil {
-		if conn, has := getConn(g.UserB.UserId); has {
-			pack.Send(conn, msg.MsgMoveResp, g.UserB.UserId, data)
+	if room.UserB != nil {
+		if conn, has := getConn(room.UserB.UserId); has {
+			pack.Send(conn, msg.MsgBloodResp, bloodData)
+			pack.Send(conn, msg.MsgMoveResp, data)
 		}
 	}
 }

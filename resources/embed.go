@@ -19,4 +19,8 @@ var (
 	T6_png []byte
 	//go:embed 1.ttf
 	Font1 []byte
+	//go:embed 2.ttf
+	Font2 []byte
+	//go:embed 3.ttf
+	Font3 []byte
 )

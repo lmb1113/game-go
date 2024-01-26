@@ -12,7 +12,10 @@ import (
 )
 
 func handleConnection(conn net.Conn) {
-	defer conn.Close() // 关闭连接
+	defer func(addr string) {
+		fmt.Println("=========用户离线=========", addr)
+		conn.Close() // 关闭连接
+	}(conn.RemoteAddr().String())
 	fmt.Println(conn.RemoteAddr())
 	scanner := bufio.NewScanner(conn)
 	scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
@@ -34,57 +37,62 @@ func handleConnection(conn net.Conn) {
 		switch scannedPack.MsgType {
 		case msg.MsgLogin:
 			setConn(string(scannedPack.Hostname), conn)
-			room, has := GetGameRoom(12345)
-			if !has {
-				SetGameRoom(12345, &GameRoom{
-					RoomId: 12345,
-					UserA: &ModelInfo{
-						UserId:   string(scannedPack.Hostname),
-						UserName: string(scannedPack.Hostname),
-						Blood:    100,
-					},
-				})
-			} else {
-				room.UserB = &ModelInfo{
-					UserId:   string(scannedPack.Hostname),
-					UserName: string(scannedPack.Hostname),
-					Blood:    100,
-				}
-				SetGameRoom(12345, room)
-			}
 			resp := &msg.LoginMsgResp{
 				BaseResp: msg.BaseResp{
 					Code: msg.CodeOk,
 				},
-				IsA: !has,
 			}
 			respData, _ := json.Marshal(resp)
-			pack.Send(conn, msg.MsgLoginResp, "server", respData)
+			pack.Send(conn, msg.MsgLoginResp, respData)
 		case msg.MsgMove:
-			room, has := GetGameRoom(12345)
-			if !has {
-				continue
-			}
 			fmt.Println("移动成功")
 			var msgData msg.MoveReq
 			json.Unmarshal(scannedPack.Msg, &msgData)
-			room.HandleMove(&msgData)
+			new(RoomService).HandleMove(&msgData)
 			resp := &msg.LoginMsgResp{
 				BaseResp: msg.BaseResp{
 					Code: msg.CodeOk,
 				},
 			}
 			respData, _ := json.Marshal(resp)
-			pack.Send(conn, msg.MsgMoveResp, "server", respData)
+			pack.Send(conn, msg.MsgMoveResp, respData)
 		case msg.MsgBlood:
-			room, has := GetGameRoom(12345)
-			if !has {
-				continue
-			}
-			fmt.Println("移动成功")
-			var msgData msg.MsgBloodReq
+			fmt.Println("血量上报", scannedPack.Msg)
+			var msgData msg.BloodReq
 			json.Unmarshal(scannedPack.Msg, &msgData)
-			room.HandleBlood(&msgData)
+			new(RoomService).HandleBlood(&msgData)
+		case msg.MsgCreateRoom:
+			fmt.Println("创建房间", scannedPack.Msg)
+			var msgData msg.CreateRoomReq
+			json.Unmarshal(scannedPack.Msg, &msgData)
+			roomId := new(RoomService).Create(msgData.Id, string(scannedPack.Hostname))
+			resp := &msg.CreateRoomResp{
+				RoomId: roomId,
+			}
+			respData, _ := json.Marshal(resp)
+			pack.Send(conn, msg.MsgCreateRoomResp, respData)
+		case msg.MsgRoomList:
+			fmt.Println("获取房间列表", scannedPack.Msg)
+			list := new(RoomService).List()
+			resp := &msg.GetRoomResp{
+				RoomList: list,
+			}
+			respData, _ := json.Marshal(resp)
+			pack.Send(conn, msg.MsgRoomListResp, respData)
+		case msg.MsgJoinRoom:
+			fmt.Println("加入房间", scannedPack.Msg)
+			var msgData msg.JoinRoomReq
+			json.Unmarshal(scannedPack.Msg, &msgData)
+			err := new(RoomService).Join(msgData.Id, msgData.RoomId)
+			if err != nil {
+				fmt.Println(err)
+			}
+			resp := &msg.JoinRoomResp{
+				RoomId: msgData.RoomId,
+			}
+			respData, _ := json.Marshal(resp)
+			pack.Send(conn, msg.MsgJoinRoomResp, respData)
+			new(RoomService).InitPlayData(msgData.RoomId)
 		}
 	}
 }

@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"game/clinet"
+	"game/global"
 	"game/msg"
 	"game/pack"
 	"game/resources"
+	"game/ui"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -25,18 +27,6 @@ import (
 	"time"
 )
 
-const (
-	screenWidth  = 1080
-	screenHeight = 600
-	modelWidth   = 50
-	modelHeight  = 50
-	dpi          = 72
-)
-
-const (
-	tileSize = 8
-)
-
 var (
 	tilesImage      *ebiten.Image
 	ckxImage        *ebiten.Image
@@ -45,6 +35,7 @@ var (
 	chickenImage    *ebiten.Image
 	gameFont60      font.Face
 	gameFont24      font.Face
+	gameFontB24     font.Face
 )
 
 func reverseImage(img image.Image) image.Image {
@@ -89,44 +80,56 @@ func init() {
 	img6, _, _ := image.Decode(bytes.NewReader(resources.T6_png))
 	chickenImage = ebiten.NewImageFromImage(reverseImage(img6))
 	whiteImage.Fill(color.White)
-	tt, err := opentype.Parse(resources.Font1)
+	tt1, err := opentype.Parse(resources.Font1)
 	if err != nil {
 		log.Fatal(err)
 	}
-	gameFont60, err = opentype.NewFace(tt, &opentype.FaceOptions{
+	tt2, err := opentype.Parse(resources.Font2)
+	if err != nil {
+		log.Fatal(err)
+	}
+	gameFont60, err = opentype.NewFace(tt1, &opentype.FaceOptions{
 		Size:    60,
-		DPI:     dpi,
+		DPI:     global.Dpi,
 		Hinting: font.HintingVertical,
 	})
-	gameFont24, err = opentype.NewFace(tt, &opentype.FaceOptions{
+	gameFont24, err = opentype.NewFace(tt1, &opentype.FaceOptions{
 		Size:    24,
-		DPI:     dpi,
+		DPI:     global.Dpi,
+		Hinting: font.HintingVertical,
+	})
+	gameFontB24, err = opentype.NewFace(tt2, &opentype.FaceOptions{
+		Size:    24,
+		DPI:     global.Dpi,
 		Hinting: font.HintingVertical,
 	})
 }
 
 type Game struct {
-	layers [][]int
-	stars  [starsCount]Star
-	keys   []ebiten.Key
-	Cxk    *ModelInfo
-	Atm    *ModelInfo
-	IsA    bool
-	Status int // 1 待开始 2 战斗中 3 战斗结束 4 暂停]
+	layers      [][]int
+	stars       [starsCount]Star
+	keys        []ebiten.Key
+	UserA       *ModelInfo
+	UserB       *ModelInfo
+	IsA         bool
+	Status      int   // 1 待开始 2 战斗中 3 战斗结束 4 暂停
+	Page        uint8 // 主页面 2战斗页面 3 服务器页面
+	ServiceList *ui.Server
+	RoomId      uint64
 }
 
 func (g *Game) GetMeObj() *ModelInfo {
 	if g.IsA {
-		return g.Cxk
+		return g.UserA
 	}
-	return g.Atm
+	return g.UserB
 }
 
 func (g *Game) GetRivalObj() *ModelInfo {
 	if !g.IsA {
-		return g.Cxk
+		return g.UserA
 	}
-	return g.Atm
+	return g.UserB
 }
 
 type ModelInfo struct {
@@ -139,23 +142,36 @@ type ModelInfo struct {
 }
 
 func (g *Game) Update() error {
-	g.keys = inpututil.AppendPressedKeys(g.keys[:0])
-	g.HandleCtrl(g.keys)
-	g.HandleRemoteCtrl()
-	x, y := ebiten.CursorPosition()
-	for i := 0; i < starsCount; i++ {
-		g.stars[i].Update(float32(x*scale), float32(y*scale))
-	}
-
-	if g.Status == 2 {
-		if g.Cxk.blood == 0 {
-			g.Status = 3
+	if g.Page == 3 {
+		g.ServiceList.Update()
+	} else {
+		g.keys = inpututil.AppendPressedKeys(g.keys[:0])
+		g.HandleCtrl(g.keys)
+		g.HandleRemoteCtrl()
+		x, y := ebiten.CursorPosition()
+		for i := 0; i < starsCount; i++ {
+			g.stars[i].Update(float32(x*scale), float32(y*scale))
 		}
-		if g.Atm.blood == 0 {
-			g.Status = 3
+		if g.Status == 2 {
+			if g.UserA.blood == 0 {
+				g.Status = 3
+			}
+			if g.UserB.blood == 0 {
+				g.Status = 3
+			}
 		}
 	}
 	return nil
+}
+
+func (g *Game) RoomJoin() {
+	time.Sleep(time.Second)
+	for data := range clinet.RoomChannel {
+		g.RoomId = data.RoomId
+		g.Page = 1
+		g.Status = 2
+		g.IsA = data.IsA
+	}
 }
 
 func (g *Game) HandleCtrl(keys []ebiten.Key) {
@@ -164,15 +180,15 @@ func (g *Game) HandleCtrl(keys []ebiten.Key) {
 		case ebiten.KeyEnter:
 			if g.Status != 2 {
 				g.Status = 2
-				g.Cxk.blood = 100
-				g.Atm.blood = 100
+				g.UserA.blood = 100
+				g.UserB.blood = 100
 			}
 		default:
 			if g.Status != 2 {
 				continue
 			}
 			g.handleKey(key)
-			go g.Cxk.Do(func() {
+			go g.UserA.Do(func() {
 				g.handleSkill(key)
 			})
 		}
@@ -182,21 +198,18 @@ func (g *Game) HandleCtrl(keys []ebiten.Key) {
 func (g *Game) HandleRemoteCtrl() {
 	if clinet.GameRoomInfo.RoomId != 0 {
 		if g.IsA {
-			g.GetMeObj().X = clinet.GameRoomInfo.UserA.X
+			//g.GetMeObj().X = clinet.GameRoomInfo.UserA.X
 			g.GetRivalObj().X = clinet.GameRoomInfo.UserB.X
-			g.GetMeObj().Y = clinet.GameRoomInfo.UserA.Y
+			//g.GetMeObj().Y = clinet.GameRoomInfo.UserA.Y
 			g.GetRivalObj().Y = clinet.GameRoomInfo.UserB.Y
-			g.GetMeObj().blood = clinet.GameRoomInfo.UserA.Blood
-			g.GetRivalObj().blood = clinet.GameRoomInfo.UserB.Blood
+			g.GetMeObj().blood = clinet.BloodResp.Blood
 		} else {
-			g.GetMeObj().X = clinet.GameRoomInfo.UserB.X
+			//g.GetMeObj().X = clinet.GameRoomInfo.UserB.X
 			g.GetRivalObj().X = clinet.GameRoomInfo.UserA.X
-			g.GetMeObj().Y = clinet.GameRoomInfo.UserB.Y
+			//g.GetMeObj().Y = clinet.GameRoomInfo.UserB.Y
 			g.GetRivalObj().Y = clinet.GameRoomInfo.UserA.Y
-			g.GetMeObj().blood = clinet.GameRoomInfo.UserB.Blood
-			g.GetRivalObj().blood = clinet.GameRoomInfo.UserA.Blood
+			g.GetMeObj().blood = clinet.BloodResp.Blood
 		}
-		g.IsA = clinet.LoginResp.IsA
 	}
 }
 
@@ -207,11 +220,11 @@ func (g *Game) handleKey(key ebiten.Key) {
 			g.GetMeObj().X -= 3
 		}
 	case ebiten.KeyS:
-		if g.GetMeObj().Y+modelHeight < screenHeight {
+		if g.GetMeObj().Y+global.ModelHeight < global.ScreenHeight {
 			g.GetMeObj().Y += 3
 		}
 	case ebiten.KeyD:
-		if g.GetMeObj().X+modelWidth < screenWidth {
+		if g.GetMeObj().X+global.ModelWidth < global.ScreenWidth {
 			g.GetMeObj().X += 3
 		}
 	case ebiten.KeyW:
@@ -220,12 +233,12 @@ func (g *Game) handleKey(key ebiten.Key) {
 		}
 	}
 	msgData, _ := json.Marshal(msg.MoveReq{
-		Id:    clinet.Uid,
-		X:     g.GetMeObj().X,
-		Y:     g.GetMeObj().Y,
-		Blood: g.GetMeObj().blood,
+		RoomId: g.RoomId,
+		Id:     clinet.Uid,
+		X:      g.GetMeObj().X,
+		Y:      g.GetMeObj().Y,
 	})
-	pack.Send(clinet.GetConn(), msg.MsgMove, clinet.Uid, msgData)
+	pack.Send(clinet.GetConn(), msg.MsgMove, msgData)
 }
 
 func (g *Game) handleSkill(key ebiten.Key) {
@@ -237,7 +250,7 @@ func (g *Game) handleSkill(key ebiten.Key) {
 			Y:    g.GetMeObj().Y,
 			Type: 1,
 		})
-		pack.Send(clinet.GetConn(), msg.MsgSkill, clinet.Uid, msgData)
+		pack.Send(clinet.GetConn(), msg.MsgSkill, msgData)
 		g.GetMeObj().Skill = append(g.GetMeObj().Skill, &SkillA{
 			SkillBase{
 				Type: 1,
@@ -250,7 +263,7 @@ func (g *Game) handleSkill(key ebiten.Key) {
 			Y:    g.GetMeObj().Y,
 			Type: 2,
 		})
-		pack.Send(clinet.GetConn(), msg.MsgSkill, clinet.Uid, msgData)
+		pack.Send(clinet.GetConn(), msg.MsgSkill, msgData)
 		g.GetMeObj().Skill = append(g.GetMeObj().Skill, &SkillA{
 			SkillBase{
 				Type: 2,
@@ -268,39 +281,43 @@ func (m *ModelInfo) Do(fn func()) {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	if g.Status == 1 {
-		text.Draw(screen, "开始游戏", gameFont60, screenWidth/2-60*2, screenHeight/2, color.White)
-		text.Draw(screen, "Enter", gameFont24, screenWidth/2-24*2, screenHeight/2+80, color.White)
-	}
-	if g.Status == 3 {
-		text.Draw(screen, "游戏结束", gameFont60, screenWidth/2-60*2, screenHeight/2, color.White)
-	}
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(0.1, 0.1)
-	op.GeoM.Translate(g.Cxk.X, g.Cxk.Y)
-	text.Draw(screen, "CXK", gameFont24, screenWidth/2-60-72, 50, color.White)
-	text.Draw(screen, "VS", gameFont60, screenWidth/2-60, 70, color.RGBA{
-		R: 0xFF,
-		G: 0,
-		B: 0,
-		A: 1,
-	})
-	text.Draw(screen, "ATM", gameFont24, screenWidth/2+60, 50, color.White)
-	if !(g.Status == 3 || g.Status == 4) {
-		for i := 0; i < starsCount; i++ {
-			g.stars[i].Draw(screen)
+	if g.Page == 3 {
+		g.ServiceList.Draw(screen)
+	} else if g.Page == 1 {
+		if g.Status == 1 {
+			text.Draw(screen, "开始游戏", gameFont60, global.ScreenWidth/2-60*2, global.ScreenHeight/2, color.White)
+			text.Draw(screen, "Enter", gameFont24, global.ScreenWidth/2-24*2, global.ScreenHeight/2+80, color.White)
 		}
-	}
-	screen.DrawImage(ckxImage, op)
-	op1 := &ebiten.DrawImageOptions{}
-	op1.GeoM.Scale(0.1, 0.1)
-	op1.GeoM.Translate(g.Atm.X, g.Atm.Y)
-	screen.DrawImage(atmImage, op1)
-	g.DrawBlood(screen)
-	{
-		for index, skill := range g.GetMeObj().Skill {
-			if skill.Handle(screen, g.GetMeObj().X, g.GetMeObj().Y, g.GetRivalObj()) {
-				g.GetMeObj().Skill = append(g.GetMeObj().Skill[:index], g.GetMeObj().Skill[index+1:]...)
+		if g.Status == 3 {
+			text.Draw(screen, "游戏结束", gameFont60, global.ScreenWidth/2-60*2, global.ScreenHeight/2, color.White)
+		}
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(0.1, 0.1)
+		op.GeoM.Translate(g.UserA.X, g.UserA.Y)
+		text.Draw(screen, "CXK", gameFont24, global.ScreenWidth/2-60-72, 50, color.White)
+		text.Draw(screen, "VS", gameFont60, global.ScreenWidth/2-60, 70, color.RGBA{
+			R: 0xFF,
+			G: 0,
+			B: 0,
+			A: 1,
+		})
+		text.Draw(screen, "ATM", gameFont24, global.ScreenWidth/2+60, 50, color.White)
+		if !(g.Status == 3 || g.Status == 4) {
+			for i := 0; i < starsCount; i++ {
+				g.stars[i].Draw(screen)
+			}
+		}
+		screen.DrawImage(ckxImage, op)
+		op1 := &ebiten.DrawImageOptions{}
+		op1.GeoM.Scale(0.1, 0.1)
+		op1.GeoM.Translate(g.UserB.X, g.UserB.Y)
+		screen.DrawImage(atmImage, op1)
+		g.DrawBlood(screen)
+		{
+			for index, skill := range g.GetMeObj().Skill {
+				if skill.Handle(screen, g.GetMeObj().X, g.GetMeObj().Y, g.GetRivalObj(), g.RoomId) {
+					g.GetMeObj().Skill = append(g.GetMeObj().Skill[:index], g.GetMeObj().Skill[index+1:]...)
+				}
 			}
 		}
 	}
@@ -308,19 +325,20 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) DrawBlood(screen *ebiten.Image) {
+	// 血条
 	var path vector.Path
 	path.MoveTo(10, 100)
-	path.LineTo(4*g.Cxk.blood, 100)
-	path.LineTo(4*g.Cxk.blood, 120)
+	path.LineTo(4*g.UserA.blood, 100)
+	path.LineTo(4*g.UserA.blood, 120)
 	path.LineTo(10, 120)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%.0f", g.Cxk.blood), int(4*g.Cxk.blood)+30, 100)
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%.0f", g.UserA.blood), int(4*g.UserA.blood)+30, 100)
 	path.Close()
 
-	path.MoveTo(screenWidth-10, 100)
-	path.LineTo(screenWidth-4*g.Atm.blood, 100)
-	path.LineTo(screenWidth-4*g.Atm.blood, 120)
-	path.LineTo(screenWidth-10, 120)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%.0f", g.Atm.blood), int(screenWidth-4*g.Atm.blood)-30, 100)
+	path.MoveTo(global.ScreenWidth-10, 100)
+	path.LineTo(global.ScreenWidth-4*g.UserB.blood, 100)
+	path.LineTo(global.ScreenWidth-4*g.UserB.blood, 120)
+	path.LineTo(global.ScreenWidth-10, 120)
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%.0f", g.UserB.blood), int(global.ScreenWidth-4*g.UserB.blood)-30, 100)
 	path.Close()
 	var vs []ebiten.Vertex
 	var is []uint16
@@ -341,15 +359,17 @@ func (g *Game) DrawBlood(screen *ebiten.Image) {
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return screenWidth, screenHeight
+	return global.ScreenWidth, global.ScreenHeight
 }
 
 func Handle() {
-	ebiten.SetWindowSize(screenWidth, screenHeight)
+	ebiten.SetWindowSize(global.ScreenWidth, global.ScreenHeight)
 	ebiten.SetWindowTitle("测试")
 	go clinet.Init()
 	GameModel = NewGame()
-	if err := ebiten.RunGame(GameModel); err != nil {
+	if err := ebiten.RunGameWithOptions(GameModel, &ebiten.RunGameOptions{
+		InitUnfocused: true,
+	}); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -366,9 +386,9 @@ type Star struct {
 }
 
 func (s *Star) Init() {
-	s.tox = rand.Float32() * screenWidth * scale
+	s.tox = rand.Float32() * global.ScreenWidth * scale
 	s.fromx = s.tox
-	s.toy = rand.Float32() * screenHeight * scale
+	s.toy = rand.Float32() * global.ScreenHeight * scale
 	s.fromy = s.toy
 	s.brightness = rand.Float32() * 0xff
 }
@@ -382,7 +402,7 @@ func (s *Star) Update(x, y float32) {
 	if 0xff < s.brightness {
 		s.brightness = 0xff
 	}
-	if s.fromx < 0 || screenWidth*scale < s.fromx || s.fromy < 0 || screenHeight*scale < s.fromy {
+	if s.fromx < 0 || global.ScreenWidth*scale < s.fromx || s.fromy < 0 || global.ScreenHeight*scale < s.fromy {
 		s.Init()
 	}
 }
@@ -399,28 +419,38 @@ func (s *Star) Draw(screen *ebiten.Image) {
 func NewGame() *Game {
 	g := &Game{
 		Status: 1,
+		Page:   3,
 	}
 	for i := 0; i < starsCount; i++ {
 		g.stars[i].Init()
 	}
-	g.Cxk = &ModelInfo{
+	g.UserA = &ModelInfo{
 		X:        100,
-		Y:        screenHeight / 2,
-		blood:    0,
+		Y:        global.ScreenHeight / 2,
+		blood:    100,
 		duration: 150 * time.Millisecond,
 	}
 
-	g.Atm = &ModelInfo{
-		X:        screenWidth / 4 * 3,
-		Y:        screenHeight / 2,
-		blood:    0,
+	g.UserB = &ModelInfo{
+		X:        global.ScreenWidth / 4 * 3,
+		Y:        global.ScreenHeight / 2,
+		blood:    100,
 		duration: 150 * time.Millisecond,
 	}
+	g.ServiceList = ui.NewService()
+	g.ServiceList.Back = func() {
+		g.Page = 1
+	}
+	g.ServiceList.Join = func(roomId uint64, isA bool) {
+		g.RoomId = roomId
+		g.IsA = isA
+	}
+	go g.RoomJoin()
 	return g
 }
 
 type Skill interface {
-	Handle(screen *ebiten.Image, x float64, y float64, obj *ModelInfo) bool
+	Handle(screen *ebiten.Image, x float64, y float64, obj *ModelInfo, roomId uint64) bool
 }
 
 type SkillBase struct {
@@ -440,16 +470,17 @@ type SkillA struct {
 	SkillBase
 }
 
-func (s *SkillA) Handle(screen *ebiten.Image, x float64, y float64, obj *ModelInfo) bool {
+func (s *SkillA) Handle(screen *ebiten.Image, x float64, y float64, obj *ModelInfo, roomId uint64) bool {
 	s.once.Do(func() {
 		s.X = x
 		s.Y = y
 	})
-	if s.X <= -40 || s.X > screenWidth+40 {
+	fmt.Println("")
+	if s.X <= -40 || s.X > global.ScreenWidth+40 {
 		return true
 	}
 
-	if s.Y <= -40 || s.Y > screenHeight+40 {
+	if s.Y <= -40 || s.Y > global.ScreenHeight+40 {
 		return true
 	}
 	op1 := &ebiten.DrawImageOptions{}
@@ -457,13 +488,15 @@ func (s *SkillA) Handle(screen *ebiten.Image, x float64, y float64, obj *ModelIn
 	op1.GeoM.Translate(s.X, s.Y)
 	s.X += 5
 	fmt.Printf(" 人物坐标 [%f,%f] 技能坐标 [%f,%f] \n", obj.X, obj.Y, s.X, s.Y)
-	if s.Y-obj.Y == 0 && math.Abs(s.X-obj.X) <= 50 {
+	if math.Abs(s.X-obj.X) <= 5 && math.Abs(s.X-obj.X) <= 50 {
 		obj.blood--
-		msgData, _ := json.Marshal(msg.MsgBloodReq{
-			Id:    clinet.Uid,
-			Blood: obj.blood,
+		msgData, _ := json.Marshal(msg.BloodReq{
+			RoomId: roomId,
+			Id:     clinet.Uid,
+			Blood:  obj.blood,
 		})
-		pack.Send(clinet.GetConn(), msg.MsgBlood, clinet.Uid, msgData)
+		pack.Send(clinet.GetConn(), msg.MsgBlood, msgData)
+		return true
 	}
 	switch s.Type {
 	case 1:
