@@ -12,18 +12,18 @@ func GetRoomList(conn net.Conn) {
 	return
 }
 
-func CreateRoom(conn net.Conn, id string) {
+func CreateRoom(conn net.Conn, userId uint64) {
 	req := msg.CreateRoomReq{
-		Id: id,
+		UserId: userId,
 	}
 	reqJson, _ := json.Marshal(req)
 	pack.Send(conn, msg.MsgCreateRoom, reqJson)
 	return
 }
 
-func JoinRoom(conn net.Conn, id string, roomId uint64) {
+func JoinRoom(conn net.Conn, userId uint64, roomId uint64) {
 	req := msg.JoinRoomReq{
-		Id:     id,
+		UserId: userId,
 		RoomId: roomId,
 	}
 	reqJson, _ := json.Marshal(req)

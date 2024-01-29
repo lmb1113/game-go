@@ -10,22 +10,22 @@ import (
 	"game/pack"
 	"game/utils/pkg/flake"
 	"net"
-	"strconv"
 )
 
 var conn net.Conn
-var Uid string
+var Uid uint64
 
 func GetConn() net.Conn {
 	return conn
 }
 
 type ModelInfo struct {
-	UserId   string  `json:"user_id"`
-	UserName string  `json:"user_name"`
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	Blood    float32 `json:"blood"`
+	UserId    string  `json:"user_id"`
+	UserName  string  `json:"user_name"`
+	X         float64 `json:"x"`
+	Y         float64 `json:"y"`
+	Blood     float32 `json:"blood"`
+	Direction int     `json:"direction"` // 1 左 2右
 }
 
 type GameRoom struct {
@@ -57,9 +57,11 @@ func Init() {
 	}
 
 	defer conn.Close()
-	id, _ := flake.GetID()
-	Uid = strconv.FormatUint(id, 10)
-	pack.Send(conn, msg.MsgLogin, nil)
+	Uid, _ = flake.GetID()
+	var loginReq msg.LoginReq
+	loginReq.UserId = Uid
+	loginReqJson, _ := json.Marshal(loginReq)
+	pack.Send(conn, msg.MsgLogin, loginReqJson)
 	go handleConnection(conn)
 	fmt.Println("已连接到服务器")
 	RoomChannel = make(chan msg.CreateRoomResp, 100)
@@ -111,6 +113,7 @@ func handleConnection(conn net.Conn) {
 			createRoomResp.IsA = true
 			RoomChannel <- createRoomResp
 		case msg.MsgSkillResp:
+			fmt.Println("对方释放技能")
 			SkillChannel <- scannedPack.Msg
 		}
 	}

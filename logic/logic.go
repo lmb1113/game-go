@@ -10,6 +10,7 @@ import (
 	"game/pack"
 	"game/resources"
 	"game/ui"
+	"game/utils/pkg/flake"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -116,6 +117,7 @@ type Game struct {
 	Page        uint8 // 主页面 2战斗页面 3 服务器页面
 	ServiceList *ui.Server
 	RoomId      uint64
+	sync.Mutex
 }
 
 func (g *Game) GetMeObj() *ModelInfo {
@@ -133,12 +135,13 @@ func (g *Game) GetRivalObj() *ModelInfo {
 }
 
 type ModelInfo struct {
-	X        float64
-	Y        float64
-	blood    float32
-	Skill    []Skill
-	lastTime time.Time
-	duration time.Duration
+	X         float64
+	Y         float64
+	blood     float32
+	Skill     sync.Map
+	lastTime  time.Time
+	duration  time.Duration
+	Direction int `json:"direction"` // 1 左 2右
 }
 
 func (g *Game) Update() error {
@@ -175,13 +178,19 @@ func (g *Game) RoomJoin() {
 }
 
 func (g *Game) RemoteSkill() {
+	time.Sleep(time.Second)
 	for data := range clinet.SkillChannel {
 		var skill SkillA
-		json.Unmarshal(data, &skill)
+		err := json.Unmarshal(data, &skill)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		fmt.Println("对方释放一个技能")
 		if g.IsA {
-			g.UserB.Skill = append(g.UserB.Skill, &skill)
+			g.UserB.Skill.Store(skill.SkillId, &skill)
 		} else {
-			g.UserA.Skill = append(g.UserA.Skill, &skill)
+			g.UserA.Skill.Store(skill.SkillId, &skill)
 		}
 	}
 }
@@ -215,11 +224,13 @@ func (g *Game) HandleRemoteCtrl() {
 			//g.GetMeObj().Y = clinet.GameRoomInfo.UserA.Y
 			g.GetRivalObj().Y = clinet.GameRoomInfo.UserB.Y
 			g.GetMeObj().blood = clinet.BloodResp.Blood
+			g.GetRivalObj().Direction = clinet.GameRoomInfo.UserB.Direction
 		} else {
 			//g.GetMeObj().X = clinet.GameRoomInfo.UserB.X
 			g.GetRivalObj().X = clinet.GameRoomInfo.UserA.X
 			//g.GetMeObj().Y = clinet.GameRoomInfo.UserB.Y
 			g.GetRivalObj().Y = clinet.GameRoomInfo.UserA.Y
+			g.GetRivalObj().Direction = clinet.GameRoomInfo.UserA.Direction
 			g.GetMeObj().blood = clinet.BloodResp.Blood
 		}
 	}
@@ -231,6 +242,7 @@ func (g *Game) handleKey(key ebiten.Key) {
 		if g.GetMeObj().X > 0 {
 			g.GetMeObj().X -= 3
 		}
+		g.GetMeObj().Direction = 1
 	case ebiten.KeyS:
 		if g.GetMeObj().Y+global.ModelHeight < global.ScreenHeight {
 			g.GetMeObj().Y += 3
@@ -239,32 +251,39 @@ func (g *Game) handleKey(key ebiten.Key) {
 		if g.GetMeObj().X+global.ModelWidth < global.ScreenWidth {
 			g.GetMeObj().X += 3
 		}
+		g.GetMeObj().Direction = 2
 	case ebiten.KeyW:
 		if g.GetMeObj().Y > 0 {
 			g.GetMeObj().Y -= 3
 		}
 	}
 	msgData, _ := json.Marshal(msg.MoveReq{
-		RoomId: g.RoomId,
-		Id:     clinet.Uid,
-		X:      g.GetMeObj().X,
-		Y:      g.GetMeObj().Y,
+		RoomId:    g.RoomId,
+		UserId:    clinet.Uid,
+		X:         g.GetMeObj().X,
+		Y:         g.GetMeObj().Y,
+		Direction: g.GetMeObj().Direction,
 	})
 	pack.Send(clinet.GetConn(), msg.MsgMove, msgData)
 }
 
 func (g *Game) handleSkill(key ebiten.Key) {
+	id, _ := flake.GetID()
 	switch key {
 	case ebiten.KeyJ:
-		g.GetMeObj().Skill = append(g.GetMeObj().Skill, &SkillA{
+		g.GetMeObj().Skill.Store(id, &SkillA{
 			SkillBase{
-				Type: 1,
+				Type:      1,
+				SkillId:   id,
+				Direction: g.GetMeObj().Direction,
 			},
 		})
 	case ebiten.KeyK:
-		g.GetMeObj().Skill = append(g.GetMeObj().Skill, &SkillA{
+		g.GetMeObj().Skill.Store(id, &SkillA{
 			SkillBase{
-				Type: 2,
+				Type:      2,
+				SkillId:   id,
+				Direction: g.GetMeObj().Direction,
 			},
 		})
 	}
@@ -312,16 +331,19 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		screen.DrawImage(atmImage, op1)
 		g.DrawBlood(screen)
 		{
-			for index, skill := range g.GetMeObj().Skill {
-				if skill.Handle(screen, g.GetMeObj().X, g.GetMeObj().Y, g.GetRivalObj(), g.RoomId) {
-					g.GetMeObj().Skill = append(g.GetMeObj().Skill[:index], g.GetMeObj().Skill[index+1:]...)
+			g.GetMeObj().Skill.Range(func(key, value any) bool {
+				if value.(*SkillA).Handle(screen, g.GetMeObj().X, g.GetMeObj().Y, g.GetRivalObj(), g.RoomId) {
+					g.GetMeObj().Skill.Delete(key)
 				}
-			}
-			for index, skill := range g.GetRivalObj().Skill {
-				if skill.HandleRemote(screen, skill.(*SkillA), g.RoomId) {
-					g.GetRivalObj().Skill = append(g.GetRivalObj().Skill[:index], g.GetRivalObj().Skill[index+1:]...)
+				return true
+			})
+
+			g.GetRivalObj().Skill.Range(func(key, value any) bool {
+				if value.(*SkillA).HandleRemote(screen, value.(*SkillA), g.RoomId) {
+					g.GetRivalObj().Skill.Delete(key)
 				}
-			}
+				return true
+			})
 		}
 	}
 	ebitenutil.DebugPrint(screen, fmt.Sprintf("TPS: %0.2f", ebiten.ActualTPS()))
@@ -464,9 +486,10 @@ type SkillBase struct {
 	Damage    int     // 伤害值
 	CD        int     // 技能CD
 	Releasing bool    // 技能是否释放中
-	Direction uint    // 1 左边 2 右边
+	Direction int     // 1 左边 2 右边
 	X         float64 // x坐标
 	Y         float64 // y坐标
+	SkillId   uint64  `json:"skill_id"`
 	once      sync.Once
 }
 
@@ -478,8 +501,18 @@ func (s *SkillA) Handle(screen *ebiten.Image, x float64, y float64, obj *ModelIn
 	s.once.Do(func() {
 		s.X = x
 		s.Y = y
+		msgData, _ := json.Marshal(msg.SkillReq{
+			UserId:    clinet.Uid,
+			RoomId:    roomId,
+			X:         s.X,
+			Y:         s.Y,
+			Type:      s.Type,
+			SkillId:   s.SkillId,
+			Direction: s.Direction,
+		})
+		fmt.Println("释放技能")
+		pack.Send(clinet.GetConn(), msg.MsgSkill, msgData)
 	})
-	fmt.Println("")
 	if s.X <= -40 || s.X > global.ScreenWidth+40 {
 		return true
 	}
@@ -490,16 +523,32 @@ func (s *SkillA) Handle(screen *ebiten.Image, x float64, y float64, obj *ModelIn
 	op1 := &ebiten.DrawImageOptions{}
 	op1.GeoM.Scale(0.1, 0.1)
 	op1.GeoM.Translate(s.X, s.Y)
-	s.X += 5
-	fmt.Printf(" 人物坐标 [%f,%f] 技能坐标 [%f,%f] \n", obj.X, obj.Y, s.X, s.Y)
-	if math.Abs(s.X-obj.X) <= 5 && math.Abs(s.X-obj.X) <= 50 {
+	if s.Direction == 2 {
+		s.X += 4
+	} else {
+		s.X -= 5
+	}
+	//fmt.Printf(" 人物坐标 [%f,%f] 技能坐标 [%f,%f] \n", obj.X, obj.Y, s.X, s.Y)
+	if math.Abs(s.X-obj.X) <= 5 && math.Abs(s.Y-obj.Y) <= 50 {
 		obj.blood--
 		msgData, _ := json.Marshal(msg.BloodReq{
 			RoomId: roomId,
-			Id:     clinet.Uid,
+			UserId: clinet.Uid,
 			Blood:  obj.blood,
 		})
+		fmt.Println("技能命中")
 		pack.Send(clinet.GetConn(), msg.MsgBlood, msgData)
+		skillData, _ := json.Marshal(msg.SkillReq{
+			UserId:    clinet.Uid,
+			RoomId:    roomId,
+			X:         s.X,
+			Y:         s.Y,
+			Type:      s.Type,
+			SkillId:   s.SkillId,
+			Direction: s.Direction,
+			Releasing: true,
+		})
+		pack.Send(clinet.GetConn(), msg.MsgSkill, skillData)
 		return true
 	}
 	switch s.Type {
@@ -518,18 +567,9 @@ func (s *SkillA) HandleRemote(screen *ebiten.Image, skill *SkillA, roomId uint64
 	s.Name = skill.Name
 	s.Damage = skill.Damage
 	s.Releasing = skill.Releasing
-	defer func() {
-		//go func() {
-		msgData, _ := json.Marshal(msg.SkillReq{
-			UserId: clinet.Uid,
-			RoomId: roomId,
-			X:      s.X,
-			Y:      s.Y,
-			Type:   1,
-		})
-		pack.Send(clinet.GetConn(), msg.MsgSkill, msgData)
-		//}()
-	}()
+	if s.Releasing {
+		return true
+	}
 	if s.X <= -40 || s.X > global.ScreenWidth+40 {
 		s.X = 99999
 		return true
@@ -542,7 +582,11 @@ func (s *SkillA) HandleRemote(screen *ebiten.Image, skill *SkillA, roomId uint64
 	op1 := &ebiten.DrawImageOptions{}
 	op1.GeoM.Scale(0.1, 0.1)
 	op1.GeoM.Translate(s.X, s.Y)
-	s.X += 5
+	if s.Direction == 2 {
+		s.X += 5
+	} else {
+		s.X -= 5
+	}
 	switch s.Type {
 	case 1:
 		screen.DrawImage(basketballImage, op1)

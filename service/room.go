@@ -30,7 +30,7 @@ func (r *RoomService) GetGameRoom(roomId uint64) (*msg.GameRoom, bool) {
 	return nil, false
 }
 
-func (r *RoomService) Create(id string, nickname string) uint64 {
+func (r *RoomService) Create(id uint64, nickname string) uint64 {
 	roomId, _ := flake.GetID()
 	room := &msg.GameRoom{
 		RoomId: roomId,
@@ -60,7 +60,7 @@ func (r *RoomService) List() []*msg.GameRoom {
 	return resp
 }
 
-func (r *RoomService) Join(id string, roomId uint64) error {
+func (r *RoomService) Join(id uint64, roomId uint64) error {
 	room, ok := r.GetGameRoom(roomId)
 	if !ok {
 		return errors.New("房间不存在")
@@ -90,7 +90,7 @@ func (r *RoomService) HandleSkill(req msg.SkillReq) error {
 			pack.Send(conn, msg.MsgSkillResp, respData)
 		}
 	} else {
-		if conn, has := getConn(room.UserB.UserId); has {
+		if conn, has := getConn(room.UserA.UserId); has {
 			pack.Send(conn, msg.MsgSkillResp, respData)
 		}
 	}

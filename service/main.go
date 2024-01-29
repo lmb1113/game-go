@@ -36,8 +36,11 @@ func handleConnection(conn net.Conn) {
 		fmt.Printf("%+v", scannedPack)
 		switch scannedPack.MsgType {
 		case msg.MsgLogin:
-			setConn(string(scannedPack.Hostname), conn)
-			resp := &msg.LoginMsgResp{
+			fmt.Println("登录成功")
+			var msgData msg.LoginReq
+			json.Unmarshal(scannedPack.Msg, &msgData)
+			setConn(msgData.UserId, conn)
+			resp := &msg.LoginResp{
 				BaseResp: msg.BaseResp{
 					Code: msg.CodeOk,
 				},
@@ -49,13 +52,6 @@ func handleConnection(conn net.Conn) {
 			var msgData msg.MoveReq
 			json.Unmarshal(scannedPack.Msg, &msgData)
 			new(RoomService).HandleMove(&msgData)
-			resp := &msg.LoginMsgResp{
-				BaseResp: msg.BaseResp{
-					Code: msg.CodeOk,
-				},
-			}
-			respData, _ := json.Marshal(resp)
-			pack.Send(conn, msg.MsgMoveResp, respData)
 		case msg.MsgBlood:
 			fmt.Println("血量上报", scannedPack.Msg)
 			var msgData msg.BloodReq
@@ -65,7 +61,7 @@ func handleConnection(conn net.Conn) {
 			fmt.Println("创建房间", scannedPack.Msg)
 			var msgData msg.CreateRoomReq
 			json.Unmarshal(scannedPack.Msg, &msgData)
-			roomId := new(RoomService).Create(msgData.Id, string(scannedPack.Hostname))
+			roomId := new(RoomService).Create(msgData.UserId, string(scannedPack.Hostname))
 			resp := &msg.CreateRoomResp{
 				RoomId: roomId,
 			}
@@ -83,7 +79,7 @@ func handleConnection(conn net.Conn) {
 			fmt.Println("加入房间", scannedPack.Msg)
 			var msgData msg.JoinRoomReq
 			json.Unmarshal(scannedPack.Msg, &msgData)
-			err := new(RoomService).Join(msgData.Id, msgData.RoomId)
+			err := new(RoomService).Join(msgData.UserId, msgData.RoomId)
 			if err != nil {
 				fmt.Println(err)
 			}

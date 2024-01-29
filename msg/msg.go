@@ -40,8 +40,12 @@ type BaseReq struct {
 	Id string `json:"id"`
 }
 
-type LoginMsg struct {
-	Name string `json:"name"`
+type LoginReq struct {
+	UserId uint64 `json:"id"`
+}
+
+type LoginResp struct {
+	BaseResp
 }
 
 type LoginMsgResp struct {
@@ -50,11 +54,12 @@ type LoginMsgResp struct {
 }
 
 type MoveReq struct {
-	Id     string  `json:"id"`
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	Blood  float32 `json:"blood"`
-	RoomId uint64  `json:"room_id"`
+	UserId    uint64  `json:"id"`
+	X         float64 `json:"x"`
+	Y         float64 `json:"y"`
+	Blood     float32 `json:"blood"`
+	RoomId    uint64  `json:"room_id"`
+	Direction int     `json:"direction"` // 1 左 2右
 }
 
 type MoveResp struct {
@@ -62,7 +67,8 @@ type MoveResp struct {
 }
 
 type SkillReq struct {
-	UserId    string  `json:"user_id"`
+	SkillId   uint64  `json:"skill_id"`
+	UserId    uint64  `json:"user_id"`
 	RoomId    uint64  `json:"room_id"`
 	X         float64 `json:"x"`
 	Y         float64 `json:"y"`
@@ -73,7 +79,7 @@ type SkillReq struct {
 
 type BloodReq struct {
 	RoomId uint64  `json:"room_id"`
-	Id     string  `json:"id"`
+	UserId uint64  `json:"user_id"`
 	Blood  float32 `json:"blood"`
 }
 
@@ -92,7 +98,7 @@ type GetRoomResp struct {
 }
 
 type CreateRoomReq struct {
-	Id string `json:"id"`
+	UserId uint64 `json:"user_id"`
 }
 
 type CreateRoomResp struct {
@@ -111,15 +117,16 @@ type GameRoom struct {
 }
 
 type ModelInfo struct {
-	UserId   string  `json:"user_id"`
-	UserName string  `json:"user_name"`
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	Blood    float32 `json:"blood"`
+	UserId    uint64  `json:"user_id"`
+	UserName  string  `json:"user_name"`
+	X         float64 `json:"x"`
+	Y         float64 `json:"y"`
+	Blood     float32 `json:"blood"`
+	Direction int     `json:"direction"` // 1 左 2右
 }
 
 type JoinRoomReq struct {
-	Id     string `json:"id"`
+	UserId uint64 `json:"user_id"`
 	RoomId uint64 `json:"room_id"`
 }
 
