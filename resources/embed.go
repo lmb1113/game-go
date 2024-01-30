@@ -23,6 +23,13 @@ var (
 	T5_png []byte
 	//go:embed images/6.png
 	T6_png []byte
+	//go:embed images/7.png
+	T7_png []byte
+
+	//go:embed images/8.png
+	T8_png []byte
+	//go:embed images/9.png
+	T9_png []byte
 	//go:embed 1.ttf
 	Font1 []byte
 	//go:embed 2.ttf
@@ -79,6 +86,18 @@ func Init() {
 	img6, _, _ := image.Decode(bytes.NewReader(T6_png))
 	ChickenImage = ebiten.NewImageFromImage(reverseImage(img6))
 	ChickenImage2 = ebiten.NewImageFromImage(img6)
+
+	img7, _, _ := image.Decode(bytes.NewReader(T7_png))
+	Skill3A = ebiten.NewImageFromImage(img7)
+	Skill3B = ebiten.NewImageFromImage(reverseImage(img7))
+
+	img8, _, _ := image.Decode(bytes.NewReader(T8_png))
+	Skill4A = ebiten.NewImageFromImage(img8)
+	Skill4B = ebiten.NewImageFromImage(reverseImage(img8))
+
+	img9, _, _ := image.Decode(bytes.NewReader(T9_png))
+	Skill5A = ebiten.NewImageFromImage(img9)
+	Skill5B = ebiten.NewImageFromImage(reverseImage(img9))
 	whiteImage.Fill(color.White)
 	tt1, err := opentype.Parse(Font1)
 	if err != nil {
@@ -100,7 +119,7 @@ func Init() {
 	})
 	GameFontB24, err = opentype.NewFace(tt2, &opentype.FaceOptions{
 		Size:    24,
-		DPI:     global.Dpi,
+		DPI:     72,
 		Hinting: font.HintingVertical,
 	})
 }
@@ -116,6 +135,12 @@ var (
 	BasketballImage2 *ebiten.Image
 	ChickenImage     *ebiten.Image
 	ChickenImage2    *ebiten.Image
+	Skill3A          *ebiten.Image
+	Skill3B          *ebiten.Image
+	Skill4A          *ebiten.Image
+	Skill4B          *ebiten.Image
+	Skill5A          *ebiten.Image
+	Skill5B          *ebiten.Image
 	GameFont60       font.Face
 	GameFont24       font.Face
 	GameFontB24      font.Face

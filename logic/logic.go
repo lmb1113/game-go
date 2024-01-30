@@ -204,6 +204,30 @@ func (g *Game) handleSkill(key ebiten.Key) {
 				Direction: g.GetMeObj().Direction,
 			},
 		})
+	case ebiten.KeyL:
+		g.GetMeObj().Skill.Store(id, &SkillA{
+			SkillBase{
+				Type:      3,
+				SkillId:   id,
+				Direction: g.GetMeObj().Direction,
+			},
+		})
+	case ebiten.KeyU:
+		g.GetMeObj().Skill.Store(id, &SkillA{
+			SkillBase{
+				Type:      4,
+				SkillId:   id,
+				Direction: g.GetMeObj().Direction,
+			},
+		})
+	case ebiten.KeyI:
+		g.GetMeObj().Skill.Store(id, &SkillA{
+			SkillBase{
+				Type:      5,
+				SkillId:   id,
+				Direction: g.GetMeObj().Direction,
+			},
+		})
 	}
 }
 
@@ -499,6 +523,25 @@ func (s *SkillA) Handle(screen *ebiten.Image, x float64, y float64, obj *ModelIn
 		} else {
 			screen.DrawImage(resources.ChickenImage, op1)
 		}
+	case 3:
+		text.Draw(screen, "律师函", resources.GameFont24, int(s.X), int(s.Y), color.RGBA{
+			R: 0xFF,
+			G: 0,
+			B: 0,
+			A: 0xff,
+		})
+	case 4:
+		if s.Direction == 1 {
+			screen.DrawImage(resources.Skill4A, op1)
+		} else {
+			screen.DrawImage(resources.Skill4B, op1)
+		}
+	case 5:
+		if s.Direction == 1 {
+			screen.DrawImage(resources.Skill5A, op1)
+		} else {
+			screen.DrawImage(resources.Skill5B, op1)
+		}
 	}
 	return false
 }
@@ -542,6 +585,25 @@ func (s *SkillA) HandleRemote(screen *ebiten.Image, skill *SkillA, roomId uint64
 			screen.DrawImage(resources.ChickenImage2, op1)
 		} else {
 			screen.DrawImage(resources.ChickenImage, op1)
+		}
+	case 3:
+		text.Draw(screen, "律师函", resources.GameFont24, int(s.X), int(s.Y), color.RGBA{
+			R: 0xFF,
+			G: 0,
+			B: 0,
+			A: 0xff,
+		})
+	case 4:
+		if s.Direction == 1 {
+			screen.DrawImage(resources.Skill4A, op1)
+		} else {
+			screen.DrawImage(resources.Skill4B, op1)
+		}
+	case 5:
+		if s.Direction == 1 {
+			screen.DrawImage(resources.Skill5A, op1)
+		} else {
+			screen.DrawImage(resources.Skill5B, op1)
 		}
 	}
 	return false
