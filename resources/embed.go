@@ -15,8 +15,6 @@ import (
 var (
 	//go:embed images/bg.png
 	Bg_png []byte
-	//go:embed images/Angle/dirt_E.png
-	Tiles_png []byte
 	//go:embed images/2.png
 	T2_png []byte
 	//go:embed images/3.png
@@ -63,8 +61,6 @@ func reverseImage(img image.Image) image.Image {
 
 func Init() {
 	// Decode an image from the image file's byte slice.
-	img, _, _ := image.Decode(bytes.NewReader(Tiles_png))
-	TilesImage = ebiten.NewImageFromImage(img)
 	bgImg, _, _ := image.Decode(bytes.NewReader(Bg_png))
 	BgImage = ebiten.NewImageFromImage(bgImg)
 
