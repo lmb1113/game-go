@@ -40,10 +40,13 @@ func (r *RoomService) Create(id uint64, nickname string) uint64 {
 			Y:      global.ScreenHeight / 2,
 			Blood:  100,
 		},
-		RoomName: nickname + "创建的房间",
-		Number:   1,
+		RoomName:   nickname + "创建的房间",
+		Number:     1,
+		Status:     1,
+		PlayStatus: 1,
 	}
 	GameRoomMar.Store(roomId, room)
+	r.SendGameStatus(roomId)
 	return roomId
 }
 
@@ -92,6 +95,40 @@ func (r *RoomService) HandleSkill(req msg.SkillReq) error {
 	} else {
 		if conn, has := getConn(room.UserA.UserId); has {
 			pack.Send(conn, msg.MsgSkillResp, respData)
+		}
+	}
+	return nil
+}
+
+func (r *RoomService) SendGameStatus(roomId uint64) error {
+	room, ok := r.GetGameRoom(roomId)
+	if !ok {
+		return errors.New("房间不存在")
+	}
+	respData, _ := json.Marshal(room)
+	if room.UserA != nil {
+		if conn, has := getConn(room.UserA.UserId); has {
+			pack.Send(conn, msg.MsgGameStatusResp, respData)
+		}
+	}
+	if room.UserB != nil {
+		if conn, has := getConn(room.UserB.UserId); has {
+			pack.Send(conn, msg.MsgGameStatusResp, respData)
+		}
+	}
+	return nil
+}
+
+func (r *RoomService) UserExit(userId uint64, notify bool) error {
+	deleteConn(userId)
+	for _, room := range r.List() {
+		if (room.UserA != nil && room.UserA.UserId == userId) || (room.UserB != nil && room.UserB.UserId == userId) {
+			room.Status = 3
+			room.Number--
+			if notify {
+				r.SendGameStatus(room.RoomId)
+			}
+			GameRoomMar.Delete(room.RoomId)
 		}
 	}
 	return nil

@@ -15,6 +15,10 @@ func handleConnection(conn net.Conn) {
 	defer func(addr string) {
 		fmt.Println("=========用户离线=========", addr)
 		conn.Close() // 关闭连接
+		if userId, has := getRemoteAddr(conn.RemoteAddr().String()); has {
+			new(RoomService).UserExit(userId, true)
+			deleteRemoteAddr(conn.RemoteAddr().String())
+		}
 	}(conn.RemoteAddr().String())
 	fmt.Println(conn.RemoteAddr())
 	scanner := bufio.NewScanner(conn)
@@ -40,6 +44,7 @@ func handleConnection(conn net.Conn) {
 			var msgData msg.LoginReq
 			json.Unmarshal(scannedPack.Msg, &msgData)
 			setConn(msgData.UserId, conn)
+			setRemoteAddr(conn.RemoteAddr().String(), msgData.UserId)
 			resp := &msg.LoginResp{
 				BaseResp: msg.BaseResp{
 					Code: msg.CodeOk,
@@ -97,6 +102,16 @@ func handleConnection(conn net.Conn) {
 			if err != nil {
 				fmt.Println(err)
 			}
+		case msg.MsgGameStatusReq:
+			fmt.Println("查询游戏状态", scannedPack.Msg)
+			var msgData msg.GameStatusReq
+			json.Unmarshal(scannedPack.Msg, &msgData)
+			new(RoomService).SendGameStatus(msgData.RoomId)
+		case msg.MsgExitRoom:
+			fmt.Println("退出游戏", scannedPack.Msg)
+			var msgData msg.RoomReq
+			json.Unmarshal(scannedPack.Msg, &msgData)
+			new(RoomService).UserExit(msgData.UserId, false)
 		}
 	}
 }

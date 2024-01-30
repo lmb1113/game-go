@@ -1,5 +1,10 @@
 package msg
 
+import (
+	"strconv"
+	"sync"
+)
+
 const (
 	Msg               uint16 = 0xFF55
 	MsgLogin          uint8  = 101
@@ -18,6 +23,10 @@ const (
 	MsgCreateRoomResp uint8  = 114
 	MsgJoinRoom       uint8  = 115
 	MsgJoinRoomResp   uint8  = 116
+	MsgGameStatusReq  uint8  = 117
+	MsgGameStatusResp uint8  = 118
+	MsgExitRoom       uint8  = 119
+	MsgExitRoomResp   uint8  = 120
 )
 
 const (
@@ -57,13 +66,16 @@ type MoveReq struct {
 	UserId    uint64  `json:"id"`
 	X         float64 `json:"x"`
 	Y         float64 `json:"y"`
-	Blood     float32 `json:"blood"`
 	RoomId    uint64  `json:"room_id"`
 	Direction int     `json:"direction"` // 1 左 2右
 }
 
 type MoveResp struct {
-	BaseResp
+	RoomId    uint64  `json:"room_id"`
+	UserId    uint64  `json:"id"`
+	X         float64 `json:"x"`
+	Y         float64 `json:"y"`
+	Direction int     `json:"direction"` // 1 左 2右
 }
 
 type SkillReq struct {
@@ -107,13 +119,51 @@ type CreateRoomResp struct {
 }
 
 type GameRoom struct {
-	RoomId   uint64     `json:"room_id"`
-	RoomName string     `json:"room_name"`
-	UserA    *ModelInfo `json:"user_a"`
-	UserB    *ModelInfo `json:"user_b"`
-	UserId   string     `json:"user_id"`
-	Number   int        `json:"number"`
-	Status   int        `json:"status"` // 1 空闲 2满
+	RoomId      uint64     `json:"room_id"`
+	RoomName    string     `json:"room_name"`
+	UserA       *ModelInfo `json:"user_a"`
+	UserB       *ModelInfo `json:"user_b"`
+	UserId      string     `json:"user_id"`
+	Number      int        `json:"number"`
+	Status      uint8      `json:"status"`       //  1 等待玩家加入 2 游戏中 3 玩家退出
+	PlayStatus  uint8      `json:"play_status"`  // status=2时候的状态 1等待玩家进入 2等待开始 3 开始  4 回合结束 5 总结束
+	Round       uint8      `json:"round"`        // 回合
+	Result      uint8      `json:"result"`       // 回合结果1 玩家A胜利 2 玩家B胜利
+	FinalResult uint8      `json:"final_result"` // 最终结果1 玩家A胜利 2 玩家B胜利
+	Record      [2]int8    `json:"record"`       // 比赛记录
+	sync.Mutex
+}
+
+func (g *GameRoom) GetStatusText() string {
+	switch g.Status {
+	case 1:
+		return "等待玩家加入"
+	case 2:
+		return "游戏中"
+	case 3:
+		return "玩家退出,请重新开始战局"
+	default:
+		return ""
+	}
+}
+
+func (g *GameRoom) GetRecord() string {
+	return strconv.Itoa(int(g.Record[0])) + "/" + strconv.Itoa(int(g.Record[1]))
+}
+
+func (g *GameRoom) GetPlayStatusText() string {
+	switch g.PlayStatus {
+	case 1:
+		return "等待玩家进入"
+	case 2:
+		return "等待开始"
+	case 3:
+		return "开始中"
+	case 4:
+		return "游戏结束"
+	default:
+		return ""
+	}
 }
 
 type ModelInfo struct {
@@ -132,4 +182,21 @@ type JoinRoomReq struct {
 
 type JoinRoomResp struct {
 	RoomId uint64 `json:"room_id"`
+}
+
+type GameStatusReq struct {
+	RoomId uint64 `json:"room_id"`
+}
+
+type GameStatusResp struct {
+	RoomId         uint64 `json:"room_id"`
+	Status         uint8  `json:"status"`
+	PlayStatus     uint8  `json:"play_status"`
+	StatusText     string `json:"status_text"`
+	PlayStatusText string `json:"play_status_text"`
+}
+
+type RoomReq struct {
+	RoomId uint64 `json:"room_id"`
+	UserId uint64 `json:"user_id"`
 }

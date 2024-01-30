@@ -28,13 +28,8 @@ type ModelInfo struct {
 	Direction int     `json:"direction"` // 1 左 2右
 }
 
-type GameRoom struct {
-	RoomId uint64     `json:"room_id"`
-	UserA  *ModelInfo `json:"user_a"`
-	UserB  *ModelInfo `json:"user_b"`
-}
-
-var GameRoomInfo GameRoom
+var GameRoomInfo msg.GameRoom
+var MoveResp msg.MoveResp
 
 var LoginResp msg.LoginMsgResp
 var RoomResp msg.GetRoomResp
@@ -96,7 +91,7 @@ func handleConnection(conn net.Conn) {
 		fmt.Printf("%+v", scannedPack)
 		switch scannedPack.MsgType {
 		case msg.MsgMoveResp:
-			json.Unmarshal(scannedPack.Msg, &GameRoomInfo)
+			json.Unmarshal(scannedPack.Msg, &MoveResp)
 		case msg.MsgLoginResp:
 			json.Unmarshal(scannedPack.Msg, &LoginResp)
 		case msg.MsgRoomListResp:
@@ -115,6 +110,9 @@ func handleConnection(conn net.Conn) {
 		case msg.MsgSkillResp:
 			fmt.Println("对方释放技能")
 			SkillChannel <- scannedPack.Msg
+		case msg.MsgGameStatusResp:
+			fmt.Println("收到房间状态响应")
+			json.Unmarshal(scannedPack.Msg, &GameRoomInfo)
 		}
 	}
 }
